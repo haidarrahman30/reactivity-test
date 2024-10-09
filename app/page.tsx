@@ -5,8 +5,9 @@
  * @see https://v0.dev/t/K5HRJv54ZsV
  * Documentation: https://v0.dev/docs#integrating-generated-code-into-your-nextjs-app
  */
+
 import { Button } from "@/components/ui/button";
-import { useCallback, useEffect, useState } from "react";
+import { useState, useMemo } from "react";
 
 type Product = {
   id: number;
@@ -30,29 +31,31 @@ const PRODUCTS: Product[] = [
 
 export default function Page() {
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [quantities, setQuantities] = useState<{
-    [id: string]: number | undefined;
-  }>({});
 
-  const removeFromCart = (product: Product) => {
-    setCart(cart.filter((p) => p.id !== product.id));
+  const addToCart = (product: Product, quantity: number) => {
+    setCart((prevCart) => {
+      const existingItem = prevCart.find((item) => item.id === product.id);
+      if (existingItem) {
+        return prevCart.map((item) =>
+          item.id === product.id
+            ? { ...item, quantity: item.quantity + quantity }
+            : item
+        );
+      } else {
+        return [...prevCart, { ...product, quantity }];
+      }
+    });
   };
 
-  useEffect(() => {
-    setQuantities(
-      cart.reduce(
-        (acc, product) => ({ ...acc, [product.id]: product.quantity }),
-        {},
-      ),
-    );
-  }, [cart]);
+  const removeFromCart = (product: Product) => {
+    setCart((prevCart) => prevCart.filter((p) => p.id !== product.id));
+  };
 
-  const totalPrice = cart
-    .reduce(
-      (total, product) => total + product.price * (quantities[product.id] || 1),
-      0,
-    )
-    .toFixed(2);
+  const totalPrice = useMemo(() => {
+    return cart
+      .reduce((total, product) => total + product.price * product.quantity, 0)
+      .toFixed(2);
+  }, [cart]);
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
@@ -60,8 +63,8 @@ export default function Page() {
         <Card
           key={product.id}
           {...product}
-          isAddedToCart={cart.findIndex((p) => p.id === product.id) >= 0}
-          onAddToCart={(data) => setCart([...cart, data])}
+          isAddedToCart={cart.some((p) => p.id === product.id)}
+          onAddToCart={(quantity) => addToCart(product, quantity)}
         />
       ))}
       {cart.length > 0 && (
@@ -94,8 +97,7 @@ export default function Page() {
             </div>
             <div className="mt-4 flex items-center justify-between">
               <p className="font-semibold">Total:</p>
-              <p className="text-primary font-bold">${totalPrice}</p>{" "}
-              {/* Bad practice: expensive calculation in render */}
+              <p className="text-primary font-bold">${totalPrice}</p>
             </div>
             <Button size="sm" className="w-full mt-4">
               Checkout
@@ -112,22 +114,21 @@ type CardProps = {
   title: string;
   price: number;
   isAddedToCart: boolean;
-  onAddToCart: (data: CartItem) => void;
+  onAddToCart: (quantity: number) => void;
 };
 
 const Card = (props: CardProps) => {
   const [quantity, setQuantity] = useState(1);
 
-  // Bad practice: Logic repeated in event handlers
   const handleAddToCart = () => {
-    props.onAddToCart({ ...props, quantity });
+    props.onAddToCart(quantity);
   };
 
   return (
     <div className="bg-background rounded-lg shadow-lg overflow-hidden">
       <img
         src="/placeholder.svg"
-        alt="Product 1"
+        alt={props.title}
         width={400}
         height={300}
         className="w-full h-60 object-cover"
@@ -142,7 +143,7 @@ const Card = (props: CardProps) => {
               variant="ghost"
               size="icon"
               disabled={props.isAddedToCart}
-              onClick={() => setQuantity((old) => (old <= 1 ? 1 : old - 1))}
+              onClick={() => setQuantity((old) => Math.max(1, old - 1))}
             >
               <MinusIcon className="w-4 h-4" />
             </Button>
@@ -151,7 +152,7 @@ const Card = (props: CardProps) => {
               variant="ghost"
               size="icon"
               disabled={props.isAddedToCart}
-              onClick={() => setQuantity(quantity + 1)}
+              onClick={() => setQuantity((old) => old + 1)}
             >
               <PlusIcon className="w-4 h-4" />
             </Button>
@@ -159,7 +160,7 @@ const Card = (props: CardProps) => {
           <Button
             size="sm"
             disabled={props.isAddedToCart}
-            onClick={handleAddToCart} // Repeated logic
+            onClick={handleAddToCart}
           >
             Add to Cart
           </Button>
